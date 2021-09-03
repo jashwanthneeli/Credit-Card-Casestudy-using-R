@@ -1,0 +1,364 @@
+---
+title: "Credit card case study"
+author: "Jashwanth Neeli"
+date: "19/07/2021"
+output: html_document
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+
+
+```{r}
+require(dplyr)
+require(lubridate)
+require(ggplot2)
+```
+
+####  BUSINESS PROBLEM: 
+#### In order to effectively produce quality decisions in the modern credit card 
+#### industry, knowledge must be gained through effective data analysis and 
+#### modeling. Through the use of dynamic data-driven decision-making tools and 
+#### procedures, information can be gathered to successfully evaluate all aspects of 
+#### credit card operations. 
+#### PSPD Bank has banking operations in more than 50 countries across the globe. 
+#### Mr. Jim Watson, CEO, wants to evaluate areas of bankruptcy, fraud, and 
+#### collections, respond to customer requests for help with proactive offers and 
+#### service.
+
+
+#### DATA AVAILABLE - 
+
+#### This book has the following sheets: 
+#### Customer Acquisition: At the time of card issuing, company maintains 
+#### the details of customers. 
+#### Spend (Transaction data): Credit card spend for each customer 
+#### Repayment: Credit card Payment done by customer 
+#### Following are some of Watson's questions to a Consultant (like you) to 
+#### understand the customers spend & repayment behavior. 
+
+
+```{r}
+
+setwd("C:/R_Aug/case_study2_CreditCard")
+
+file1 = read.csv("CustomerAcqusition.csv")
+file2 = read.csv("spend.csv")
+file3 = read.csv("Repayment.csv")
+
+```
+
+
+###THERE IS AN EMPTY COLUMN IN REPAYMENT DATA
+###REMOVE EMPTY DATA FROM THE COLUMN 
+
+```{r}
+
+file3$X <- NULL
+
+```
+
+
+
+##Check for NA VALUE
+
+```{r}
+
+sum(is.na(file1))
+sum(is.na(file2))
+sum(is.na(file3))
+
+```
+
+### 1. In the above dataset, 
+##a. Incase age is less than 18, replace it with mean of age values. 
+
+```{r}
+
+mean_Age <-mean(file1$Age)
+
+file1$Age[file1$Age<18]<- mean_Age
+file1$Age
+
+```
+
+
+##b. Incase spend amount is more than the limit, replace it with 50% of that 
+##customer's limit. (customer's limit provided in acquisition table is the per 
+##                   transaction limit on his card) 
+
+```{r}
+
+Customer_Spent <- dplyr::left_join(file1, file2, by = "Customer")  
+Amount <- ifelse(Customer_Spent$Amount>Customer_Spent$Limit, Customer_Spent$Limit/2, Customer_Spent$Amount)
+Customer_Spent$Amount <- Amount
+```
+
+
+
+##c. Incase the repayment amount is more than the limit, replace the 
+## repayment with the limit
+
+```{r}
+
+Customer_Repayment <- dplyr::left_join(file1, file3, by = "Customer") 
+Amount <- ifelse(Customer_Repayment$Amount>Customer_Repayment$Limit, Customer_Repayment$Limit, Customer_Repayment$Amount)
+Customer_Repayment$Amount <- Amount
+
+```
+
+
+
+###2. From the above dataset create the following summaries: 
+
+
+##  a. How many distinct customers exist? 
+
+```{r}
+
+#using dplyr method :
+
+distinct_cust <- dplyr::distinct(file1, Customer)
+count(distinct_cust)
+
+```
+
+
+
+###b. How many distinct categories exist? 
+
+```{r}
+
+distinct_cat <- file1%>% dplyr::group_by(Segment)%>% summarise(cnt=n())
+distinct_cat
+
+```
+
+
+
+### c. What is the average monthly spend by customers? 
+
+```{r}
+
+Customer_Spent$Month <-  lubridate::dmy(Customer_Spent$Month)
+
+Customer_Spent$YEAR <- lubridate::year(Customer_Spent$Month)
+
+Customer_Spent$MON_TH <- lubridate::month(Customer_Spent$Month, label = TRUE)
+
+Average_monthly_Spent <- Customer_Spent %>% dplyr::group_by(YEAR,MON_TH) %>% dplyr::summarise(Average_Monthly_Spent = mean(Amount))
+Average_monthly_Spent
+
+```
+
+
+
+####  d. What is the average monthly repayment by customers?
+
+```{r}
+
+Customer_Repayment$Month <-  lubridate::dmy(Customer_Repayment$Month)
+Customer_Repayment$YEAR <- lubridate::year(Customer_Repayment$Month)
+Customer_Repayment$MON_TH <- lubridate::month(Customer_Repayment$Month, label = TRUE)
+Average_monthly_Repayment <- Customer_Repayment %>% dplyr::group_by(YEAR,MON_TH) %>% dplyr::summarise(Average_Monthly_Repayment =mean(Amount))
+Average_monthly_Repayment
+
+```
+
+
+
+####  e. If the monthly rate of interest is 2.9%, what is the profit for the bank for 
+#### each month? (Profit is defined as interest earned on Monthly Profit. 
+
+```{r}
+
+monthly_Spent <- Customer_Spent %>% dplyr::group_by(YEAR,MON_TH) %>% dplyr::summarise(Average_Monthly = sum(Amount))
+monthly_Repayment <- Customer_Repayment %>% dplyr::group_by(YEAR,MON_TH) %>% dplyr::summarise(Average_Monthly = sum(Amount))
+For_Profit <- cbind(monthly_Spent, monthly_Repayment)
+For_Profit <- dplyr::rename(For_Profit, "SPENT" = "Average_Monthly...3", "REPAY" = "Average_Monthly...6")
+For_Profit <- dplyr::rename(For_Profit, "YEAR" = "YEAR...1", "MONTH" = "MON_TH...2")
+
+##DROP USELESS COLUMN
+
+For_Profit$YEAR...4 <- NULL
+For_Profit$MON_TH...5 <- NULL
+
+For_Profit$PROFIT <- For_Profit$REPAY- For_Profit$SPENT
+
+PROFIT_PLUS <- For_Profit[For_Profit$PROFIT > 0, ]
+
+
+
+PROFIT_PLUS$Profit_AMOUNT <- (PROFIT_PLUS$PROFIT*2.9)/100
+PROFIT_PLUS
+```
+
+
+
+
+####  f. What are the top 5 product types? 
+
+```{r}
+
+sum_prod_types <- file2 %>% dplyr::group_by(Type) %>% summarise(total = n()) %>% arrange(desc(total))
+top5_prod_types <- head(sum_prod_types,5)
+top5_prod_types
+
+```
+
+
+
+####  g. Which city is having maximum spend? 
+    
+###### Customer Spent Data is Used For Solution 
+
+```{r}
+
+max_city_spend <- Customer_Spent %>% dplyr::group_by(City) %>% dplyr::summarise(Total_Spend = 
+                                                sum(Amount), Percentage = 
+           round(sum(Amount)*100/sum(Customer_Spent$Amount),2) ) %>% dplyr::arrange(desc(Total_Spend))
+max_city_spend
+
+```
+
+
+
+#### h. Which age group is spending more money?  (Age Group 18-36,36-54,54-72,72+)
+
+```{r}
+
+Customer_Spent$Age_group <- ifelse(Customer_Spent$Age<36, "YOUNG", ifelse(Customer_Spent$Age <54, "MID_AGE", ifelse(Customer_Spent$Age <72, "MATURE", "OLD")))
+Age_group_spend <- Customer_Spent %>% group_by(Age_group)%>%summarise(ttl_spend = sum(Amount), percentage= round(sum(Amount)*100/sum(Customer_Spent$Amount),2))%>%arrange(desc(ttl_spend))
+
+Age_group_spend
+
+```
+
+
+
+####  i. Who are the top 10 customers in terms of repayment?
+
+```{r}
+
+
+  Top_Customers <- Customer_Repayment %>% dplyr::group_by(Customer) %>% dplyr::summarise(Total_Repayment = 
+                                                         sum(Amount)) %>% dplyr::arrange(desc(Total_Repayment))
+  Top_10_Customers <- head(Top_Customers,10)
+  Top_10_Customers
+
+
+```
+
+
+
+#### 3. Calculate the city wise spend on each product on yearly basis. Also include a 
+####  graphical representation for the same. 
+
+```{r}
+
+citywise_spend <- Customer_Spent %>%dplyr::group_by(YEAR,City,Product)%>% summarise(spend = sum(Amount))
+
+require(ggplot2)
+
+ggplot2::ggplot(data = citywise_spend) + aes(x= City, y = spend, fill = Product) + geom_bar(stat = "identity", position = "dodge") + facet_grid(.~YEAR)
+
+
+
+```
+
+
+
+#### 4. Create graphs for 
+
+####  a. Monthly comparison of total spends, city wise 
+
+```{r}
+
+monthly_citySpend <- Customer_Spent %>% group_by(City, MON_TH) %>% summarise(monthly_spend = sum(Amount))
+
+#using Bar Chart
+ggplot2::ggplot(data = monthly_citySpend) + aes(x= MON_TH, y= monthly_spend, fill = City) + geom_bar(stat = "identity", position = "dodge")  
+
+#using line chart
+monthly_citySpend %>% ggplot(aes(x= MON_TH, y = monthly_spend, group = City, color = City)) + geom_line() 
+
+
+```
+
+
+
+####  b. Comparison of yearly spend on air tickets 
+
+```{r}
+
+airtickets <- Customer_Spent[Customer_Spent$Type == "AIR TICKET",]
+yearly_spend <- airtickets %>% group_by(YEAR, Type) %>% summarise(ttl_spend = sum(Amount))
+
+#using Bar Chart
+ggplot2::ggplot(data = yearly_spend) + aes(x= YEAR, y= ttl_spend) + geom_bar(stat = "identity", fill= "red", color = "black", position = "dodge")
+
+#using line chart
+yearly_spend %>% ggplot(aes(x= YEAR, y = ttl_spend, color = Type)) + geom_line() + theme_dark()
+
+
+```
+
+
+
+####  c. Comparison of monthly spend for each product (look for any seasonality that exists in terms of spend) 
+
+```{r}
+
+monthly_ProductSpend <- Customer_Spent %>% group_by(Product, MON_TH) %>% summarise(monthly_spend = sum(Amount))
+
+ggplot2::ggplot(data = monthly_ProductSpend) + aes(x= MON_TH, y = monthly_spend, fill = Product) + geom_bar(stat = "identity", position = "dodge") 
+
+
+```
+
+
+
+#### 5. Write user defined R function to perform the following analysis: 
+#### You need to find top 10 customers for each city in terms of their repayment 
+#### amount by different products and by different time periods i.e. year or 
+#### month. The user should be able to specify the product 
+#### (Gold/Silver/Platinum) and time period (yearly or monthly) and the function 
+#### should automatically take these inputs while identifying the top 10 
+#### customers.
+
+```{r}
+
+
+UDF_TOP10 <- function(Time,Prod) { 
+  P_DATA =   Customer_Repayment[(Customer_Repayment$Product == Prod) & ((Customer_Repayment$YEAR = Time) & (Customer_Repayment$MON_TH == Time)),]
+  require(dplyr)
+  Pre_Result = P_DATA %>% dplyr::group_by(Customer, City, Product, Time) %>% dplyr::summarise(TOTALS_PEND = sum(Amount)) %>% dplyr::arrange(desc(TOTALS_PEND))
+  Result = head(Pre_Result,10)
+  print(Result) 
+  
+}
+
+```
+
+
+```{r}
+
+Product_category = readline(prompt = "Product category should be in Gold/Silver/Platinum: ");
+Prod = as.character(Prod);
+Time = readline(prompt = "Time Period and time period should be in Year/month: ");
+Time = as.integer(Time)
+
+```
+
+
+```{r}
+UDF_TOP10(Time, Prod)
+UDF_TOP10
+
+```
+
